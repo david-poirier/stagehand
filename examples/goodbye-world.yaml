@@ -1,0 +1,9 @@
+files:
+  - path: /var/www/html/index.php
+    action: delete
+packages:
+  - name: apache2
+    action: remove
+  - name: libapache2-mod-php
+    action: remove
+
