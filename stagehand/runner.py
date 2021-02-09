@@ -16,208 +16,195 @@ from . import scenario
 from . import session
 
 
-def _start_session(loc):
-    url = urllib.parse.urlparse(f"ssh://{loc}")
-    hostname = url.hostname
-    username = url.username
-    port = url.port
-    if port is None:
-        port = 22
-    if hostname is None or username is None:
-        print(
-            f"can't parse location '{loc}'; make sure it's in the format 'username@hostname[:port]', e.g. 'root@10.20.30.40'"
-        )
-        return
+class Runner:
+    def __init__(self, *, scenario_file, locations, rehearsal, _debug):
+        self.scenario_file = scenario_file
+        self.locations = locations
+        self.rehearsal = rehearsal
+        self.debug = _debug
 
-    while True:
-        try:
-            password = ""
-            while password == "":
-                password = getpass.getpass(f"password for '{loc}': ")
-            sess = session.Session(
-                hostname=hostname, port=port, username=username, password=password
+    def run(self):
+        debug.set_debug(self.debug)
+        scn = scenario.load(self.scenario_file)
+        print("*" * 80)
+        for loc in self.locations.split(","):
+            print(f"executing scenario '{self.scenario_file}' against location '{loc}'")
+            try:
+                executor = Executor(
+                    scenario=scn, location=loc, rehearsal=self.rehearsal
+                )
+                executor.run()
+                print(
+                    f"scenario execution completed with {executor.errors} error(s) in {executor.elapsed_seconds} seconds"
+                )
+            except Exception as e:
+                print("execution failed: {e}")
+            print("*" * 80)
+
+
+class Executor:
+    def __init__(self, *, scenario, location, rehearsal):
+        self.scenario = scenario
+        self.location = location
+        self.rehearsal = rehearsal
+
+        url = urllib.parse.urlparse(f"ssh://{self.location}")
+        hostname = url.hostname
+        port = url.port
+        if port is None:
+            port = 22
+        username = url.username
+        if hostname is None or username is None:
+            raise ValueError(
+                f"can't parse location '{self.location}'; make sure it's in the format 'username@hostname[:port]', e.g. 'root@10.20.30.40'"
             )
-            sess.start()
-            return sess
-        except session.SessionAuthError:
-            print("incorrect password!")
+        self.hostname = hostname
+        self.port = port
+        self.username = username
 
-def _execute_scenario(scn, loc):
-    sess = _start_session(loc)
-    restarts = []
-    errors = 0
-    start = time.perf_counter()
+        self.restarts = []
+        self.errors = 0
 
-    # 1. package installs
-    for pkg in scn.packages:
-        if pkg.action == "install":
-            result = _execute_package_install(pkg, sess)
-            errors += 1 if result.status == "error" else 0
-            _update_restarts(restarts, result)
+    def run(self):
+        self.session = self._start_session()
+        start = time.perf_counter()
 
-    # 2. package removes
-    for pkg in scn.packages:
-        if pkg.action == "remove":
-            result = _execute_package_remove(pkg, sess)
-            errors += 1 if result.status == "error" else 0
-            _update_restarts(restarts, result)
+        # 1. package installs
+        for pkg in self.scenario.packages:
+            if pkg.action == "install":
+                self._execute_package_install(pkg)
 
-    # 3. file copies
-    for f in scn.files:
-        if f.action == "copy":
-            result = _execute_file_copy(f, sess)
-            errors += 1 if result.status == "error" else 0
-            _update_restarts(restarts, result)
+        # 2. package removes
+        for pkg in self.scenario.packages:
+            if pkg.action == "remove":
+                self._execute_package_remove(pkg)
 
-    # 4. file deletes
-    for f in scn.files:
-        if f.action == "delete":
-            result = _execute_file_delete(f, sess)
-            errors += 1 if result.status == "error" else 0
-            _update_restarts(restarts, result)
+        # 3. file copies
+        for f in self.scenario.files:
+            if f.action == "copy":
+                self._execute_file_copy(f)
 
-    # 5. restarts
-    for svc in restarts:
-        result = _execute_service_restart(svc, sess)
-        errors += 1 if result.status == "error" else 0
+        # 4. file deletes
+        for f in self.scenario.files:
+            if f.action == "delete":
+                self._execute_file_delete(f)
 
-    elapsed_seconds = round((time.perf_counter() - start), 2)
-    sess.stop()
+        # 5. restarts
+        for svc in self.restarts:
+            self._execute_service_restart(svc)
 
-    return errors, elapsed_seconds
+        self.elapsed_seconds = round((time.perf_counter() - start), 2)
+        self.session.stop()
 
+    def _start_session(self):
+        while True:
+            try:
+                password = ""
+                while password == "":
+                    password = getpass.getpass(f"password for '{self.location}': ")
+                sess = session.Session(
+                    hostname=self.hostname,
+                    port=self.port,
+                    username=self.username,
+                    password=password,
+                )
+                sess.start()
+                return sess
+            except session.SessionAuthError:
+                print("incorrect password!")
 
-class ExecutionResult:
-    def __init__(
-        self,
-        *,
-        status,
-        restarts,
-    ):
-        self.status = status
-        self.restarts = restarts
+    def _execute_package_install(self, pkg):
+        print(f"installing package '{pkg.name}'... ", end="", flush=True)
+        cmd = commands.PackageInstall(package=pkg.name)
+        cmd_resp = self.session.execute_command(cmd)
+        self._process_cmd_resp(cmd_resp, pkg.restarts)
 
-def _print_cmd_resp(cmd_resp):
-    if cmd_resp.result == "ok":
-        print("done")
-    elif cmd_resp.result == "noop":
-        print("nothing to do")
-    elif cmd_resp.result == "error":
-        print(f"error: {cmd_resp.error}")
+    def _execute_package_remove(self, pkg):
+        print(f"removing package '{pkg.name}'...", end="", flush=True)
+        cmd = commands.PackageRemove(package=pkg.name)
+        cmd_resp = self.session.execute_command(cmd)
+        self._process_cmd_resp(cmd_resp, pkg.restarts)
 
-def _update_restarts(restarts, result):
-    for r in result.restarts:
-        if r not in restarts:
-            restarts.append(r)
+    def _execute_file_delete(self, f):
+        print(f"deleting file '{f.path}'... ", end="", flush=True)
+        cmd = commands.FileDelete(path=f.path)
+        cmd_resp = self.session.execute_command(cmd)
+        self._process_cmd_resp(cmd_resp, f.restarts)
 
+    def _execute_file_copy(self, f):
+        print(f"copying file '{f.path}'... ", end="", flush=True)
+        cmd = commands.FileGetProps(path=f.path)
+        cmd_resp = self.session.execute_command(cmd)
 
-def _result(status, restarts=[]):
-    return ExecutionResult(
-            status=status,
-            restarts=restarts)
+        if (
+            f.hash == cmd_resp.hash
+            and f.user == cmd_resp.user
+            and f.group == cmd_resp.group
+            and f.mode == f.mode & cmd_resp.mode
+        ):
+            # noop
+            print("nothing to do")
+            return
 
-
-def _execute_package_install(pkg, sess):
-    print(f"installing package '{pkg.name}'... ", end="", flush=True)
-    cmd = commands.PackageInstall(package=pkg.name)
-    cmd_resp = sess.execute_command(cmd)
-    _print_cmd_resp(cmd_resp)
-    if cmd_resp.result == "ok":
-        return _result("ok", pkg.restarts)
-    return _result(cmd_resp.result)
-
-
-def _execute_package_remove(pkg, sess):
-    print(f"removing package '{pkg.name}'...", end="", flush=True)
-    cmd = commands.PackageRemove(package=pkg.name)
-    cmd_resp = sess.execute_command(cmd)
-    _print_cmd_resp(cmd_resp)
-    if cmd_resp.result == "ok":
-        return _result("ok", pkg.restarts)
-    return _result(cmd_resp.result)
-
-
-def _execute_file_delete(f, sess):
-    print(f"deleting file '{f.path}'... ", end="", flush=True)
-    cmd = commands.FileDelete(path=f.path)
-    cmd_resp = sess.execute_command(cmd)
-    _print_cmd_resp(cmd_resp)
-    if cmd_resp.result == "ok":
-        return _result("ok", f.restarts)
-    return _result(cmd_resp.result)
-
-
-def _execute_file_copy(f, sess):
-    print(f"copying file '{f.path}'... ", end="", flush=True)
-    cmd = commands.FileGetProps(path=f.path)
-    cmd_resp = sess.execute_command(cmd)
-
-    if (
-        f.hash == cmd_resp.hash
-        and f.user == cmd_resp.user
-        and f.group == cmd_resp.group
-        and f.mode == f.mode & cmd_resp.mode
-    ):
-        # noop
-        print("nothing to do")
-        return _result("noop")
-
-    # check if same file
-    if f.hash != cmd_resp.hash:
-        # no, copy to remote
-        sess.put_data(f.content.encode(), f.path)
-
-        # check again
-        cmd_resp = sess.execute_command(cmd)
+        # check if same file
         if f.hash != cmd_resp.hash:
-            # failed
-            print("error: couldn't copy file")
-            return _result("error")
+            # no, copy to remote
+            self.session.put_data(f.content.encode(), f.path)
 
-    # check user + group + mode
-    if (
-        f.user != cmd_resp.user
-        or f.group != cmd_resp.group
-        or f.mode != f.mode & cmd_resp.mode
-    ):
-        # doesn't match, modify
-        cmd = commands.FileSetProps(
-            path=f.path,
-            user=f.user,
-            group=f.group,
-            mode=f.mode,
-        )
+            # check again
+            cmd_resp = self.session.execute_command(cmd)
+            if f.hash != cmd_resp.hash:
+                # failed
+                print("error: couldn't copy file")
+                self.errors += 1
+                return
 
-        # check again
-        cmd_resp = sess.execute_command(cmd)
+        # check user + group + mode
         if (
             f.user != cmd_resp.user
             or f.group != cmd_resp.group
             or f.mode != f.mode & cmd_resp.mode
         ):
-            # failed
-            print("error: couldn't modify file props")
-            return _result("error")
+            # doesn't match, modify
+            cmd = commands.FileSetProps(
+                path=f.path,
+                user=f.user,
+                group=f.group,
+                mode=f.mode,
+            )
 
-    print("done")
-    return _result("ok", f.restarts)
+            # check again
+            cmd_resp = self.session.execute_command(cmd)
+            if (
+                f.user != cmd_resp.user
+                or f.group != cmd_resp.group
+                or f.mode != f.mode & cmd_resp.mode
+            ):
+                # failed
+                print("error: couldn't modify file props")
+                self.errors += 1
+                return
 
+        print("done")
+        return self._add_restarts(f.restarts)
 
-def _execute_service_restart(service, sess):
-    print(f"restarting service '{service}'... ", end="", flush=True)
-    cmd = commands.ServiceRestart(service=service)
-    cmd_resp = sess.execute_command(cmd)
-    _print_cmd_resp(cmd_resp)
-    return _result(cmd_resp.result)
+    def _execute_service_restart(self, service):
+        print(f"restarting service '{service}'... ", end="", flush=True)
+        cmd = commands.ServiceRestart(service=service)
+        cmd_resp = self.session.execute_command(cmd)
+        self._process_cmd_resp(cmd_resp, [])
 
+    def _process_cmd_resp(self, cmd_resp, restarts):
+        if cmd_resp.result == "ok":
+            print("done")
+            self._add_restarts(restarts)
+        elif cmd_resp.result == "noop":
+            print("nothing to do")
+        elif cmd_resp.result == "error":
+            print(f"error: {cmd_resp.error}")
+            self.errors += 1
 
-def run(scenario_file, locations, _debug):
-    debug.set_debug(_debug)
-    scn = scenario.load(scenario_file)
-    print("*" * 80)
-    for loc in locations.split(","):
-        print(f"executing scenario '{scenario_file}' against location '{loc}'")
-        errors, elapsed_seconds = _execute_scenario(scn, loc)
-        print(f"scenario execution completed with {errors} error(s) in {elapsed_seconds} seconds")
-        print("*" * 80)
-
+    def _add_restarts(self, restarts):
+        for r in restarts:
+            if r not in self.restarts:
+                self.restarts.append(r)

@@ -173,6 +173,18 @@ class ServiceRestartResponse:
         self.error = error
 
 
+class RehearsalStart:
+    def __init__(self, *, name="rehearsal-start"):
+        self.name = name
+
+
+class RehearsalStartResponse:
+    def __init__(self, *, result, error, name="rehearsal-start-response"):
+        self.name = name
+        self.result = result
+        self.error = error
+
+
 def fromdict(d):
     cmd_name = d["name"]
     if cmd_name == "package-install":
@@ -199,3 +211,7 @@ def fromdict(d):
         return ServiceRestart(**d)
     elif cmd_name == "service-restart-response":
         return ServiceRestartResponse(**d)
+    elif cmd_name == "rehearsal-start":
+        return RehearsalStart(**d)
+    elif cmd_name == "rehearsal-start-response":
+        return RehearsalStartResponse(**d)

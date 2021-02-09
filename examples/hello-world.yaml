@@ -4,23 +4,13 @@ files:
     group: root
     user: root
     mode: 0o644
-    content: '<?php
-
-      header("Content-Type: text/plain");
-
-      echo "Hello, world!\n";
-
-      ?>'
+    content: "<?php\nheader(\"Content-Type: text/plain\");\necho \"Hello, world!\\n\";\n?>"
   - path: /etc/apache2/mods-available/dir.conf
     action: copy
     group: root
     user: root
     mode: 0o644
-    content: '<IfModule mod_dir.c>
-
-      DirectoryIndex index.php
-
-      </IfModule>'
+    content: "<IfModule mod_dir.c>\nDirectoryIndex index.php\n</IfModule>"
     restarts: 
       - apache2
   - path: /var/www/html/index.html

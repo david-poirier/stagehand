@@ -67,4 +67,3 @@ def load(filename):
         d = yaml.safe_load(f)
     s = Scenario(**d)
     return s
-

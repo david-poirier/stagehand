@@ -5,7 +5,7 @@ from . import runner
 
 def stagehand():
     parser = argparse.ArgumentParser(
-        description="stagehand - configuration management done (too) quick"
+        description="stagehand - Configuration management done (too) quick"
     )
     parser.add_argument(
         "--scenario",
@@ -20,11 +20,25 @@ def stagehand():
         required=True,
     )
     parser.add_argument(
+        "--rehearsal",
+        action="store_true",
+        help="Report on what action should be taken, without actually doing anything",
+        required=False,
+        default=False,
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Watch messages passed between stagehand and the remote location",
         required=False,
-        default=False)
-    args = parser.parse_args()
-    runner.run(args.scenario, args.locations, args.debug)
+        default=False,
+    )
 
+    args = parser.parse_args()
+    r = runner.Runner(
+        scenario_file=args.scenario,
+        locations=args.locations,
+        rehearsal=args.rehearsal,
+        _debug=args.debug,
+    )
+    r.run()

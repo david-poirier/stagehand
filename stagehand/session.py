@@ -28,7 +28,7 @@ class Session:
         self.session_id = "".join(
             random.choices(string.digits + string.ascii_lowercase, k=10)
         )
-        self.remote_dir = f"/tmp/asciible_{self.session_id}/"
+        self.remote_dir = f"/tmp/stagehand_{self.session_id}/"
 
     def start(self):
         try:
@@ -101,21 +101,24 @@ class Session:
         return msg
 
     def _exec_simple_command(self, cmd):
+        debug.print(f"SSH cmd '{cmd}'")
         stdin, stdout, stderr = self.ssh.exec_command(cmd)
         out = stdout.read().decode().strip()
         err = stderr.read().decode().strip()
         return out, err
 
     def _put_file(self, local, remote):
+        debug.print(f"SFTP putting file '{local}' to '{remote}'")
         sftp = self.ssh.open_sftp()
         sftp.put(local, remote, confirm=True)
         sftp.close()
 
     def put_data(self, data, remote):
+        debug.print(f"SFTP putting data to '{remote}'")
         sftp = self.ssh.open_sftp()
         sftp.putfo(io.BytesIO(data), remote, confirm=True)
         sftp.close()
 
+
 class SessionAuthError(Exception):
     pass
-
