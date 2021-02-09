@@ -106,7 +106,7 @@ files:
 ## Features
 - Each action in a `scenario` is idempotent - if the machine is already in the desired state no action is taken
 - No prereqs or agent installation on targets (assuming standard Ubuntu 18.04 setup)
-- Uses `apt` and `dbus` Python modules already present on Ubuntu 18.04 to manage packages and services
+- Uses [`apt`](https://apt-team.pages.debian.net/python-apt/library/index.html) and [`dbus`](https://dbus.freedesktop.org/doc/dbus-python/index.html) Python modules already present on Ubuntu 18.04 to manage packages and services
 - File data, user/group, and mode are treated separately, ensuring files are only copied and modified when necessary
 - Supports `rehearsal` mode (dry-run) and `debug` mode (SSH & SFTP commands, protocol messages)
 - Doesn't do anything stupid with passwords
