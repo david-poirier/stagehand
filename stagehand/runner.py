@@ -215,7 +215,10 @@ class Executor:
 
     def _process_cmd_resp(self, cmd_resp, restarts=[]):
         if cmd_resp.result == "ok":
-            print("done")
+            if self.rehearsal:
+                print("done (rehearsal)")
+            else:
+                print("done")
             self._add_restarts(restarts)
         elif cmd_resp.result == "noop":
             print("nothing to do")
@@ -227,3 +230,4 @@ class Executor:
         for r in restarts:
             if r not in self.restarts:
                 self.restarts.append(r)
+

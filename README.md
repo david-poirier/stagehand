@@ -122,3 +122,10 @@ files:
 - `agent.py` code is weird because it's part of the `scenario` module and it's a script
 - Client-server protocol tightly coupled with SSH stdin/out transport, makes debugging on target challenging
 
+## Ideas for improvement
+- Make `agent.py` a standalone application with its own vendored dependencies (so no "installation" required), distributed with `stagehand` - this would allow for use of different transport in testing and debugging, getting from scripting, etc
+- Make `stagehand` multithreaded so that running on 10,000 targets take the same time as running on 1
+- Make `stagehand` useable as a module as well as a CLI
+- Store secrets (e.g. SSH passwords) securely so that they don't need to be input each time for each target, which is clearly not scaleable
+- Store an execution history somewhere useful, e.g. a database
+
