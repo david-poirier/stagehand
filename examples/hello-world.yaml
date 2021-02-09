@@ -3,13 +3,13 @@ files:
     action: copy
     group: root
     user: root
-    mode: 0o644
+    mode: 644
     content: "<?php\nheader(\"Content-Type: text/plain\");\necho \"Hello, world!\\n\";\n?>"
   - path: /etc/apache2/mods-available/dir.conf
     action: copy
     group: root
     user: root
-    mode: 0o644
+    mode: 644
     content: "<IfModule mod_dir.c>\nDirectoryIndex index.php\n</IfModule>"
     restarts: 
       - apache2

@@ -21,7 +21,7 @@ class File:
             raise ValueError("file.action must be either 'copy' or 'delete'")
         self.group = group
         self.user = user
-        self.mode = int(mode, 8) if isinstance(mode, str) else mode
+        self.mode = mode if isinstance(mode, str) else str(mode)
         self.content = content
         self.restarts = restarts
         self.hash = (

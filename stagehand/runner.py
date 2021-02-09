@@ -150,7 +150,7 @@ class Executor:
             f.hash == cmd_resp.hash
             and f.user == cmd_resp.user
             and f.group == cmd_resp.group
-            and f.mode == f.mode & cmd_resp.mode
+            and f.mode == cmd_resp.mode
         ):
             # noop
             print("nothing to do")
@@ -163,6 +163,7 @@ class Executor:
                 self.session.put_data(f.content.encode(), f.path)
 
                 # check again
+                cmd = commands.FileGetProps(path=f.path)
                 cmd_resp = self.session.execute_command(cmd)
                 if f.hash != cmd_resp.hash:
                     # failed
@@ -174,7 +175,7 @@ class Executor:
         if (
             f.user != cmd_resp.user
             or f.group != cmd_resp.group
-            or f.mode != f.mode & cmd_resp.mode
+            or f.mode != cmd_resp.mode
         ):
             # doesn't match, modify
             if not self.rehearsal:
@@ -184,13 +185,19 @@ class Executor:
                     group=f.group,
                     mode=f.mode,
                 )
+                cmd_resp = self.session.execute_command(cmd)
+                if cmd_resp.result == "error":
+                    print(f"error: {cmd_resp.error}")
+                    self.errors += 1
+                    return
 
                 # check again
+                cmd = commands.FileGetProps(path=f.path)
                 cmd_resp = self.session.execute_command(cmd)
                 if (
                     f.user != cmd_resp.user
                     or f.group != cmd_resp.group
-                    or f.mode != f.mode & cmd_resp.mode
+                    or f.mode != cmd_resp.mode
                 ):
                     # failed
                     print("error: couldn't modify file props")

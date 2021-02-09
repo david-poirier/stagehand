@@ -74,7 +74,7 @@ A `file` consists of:
 - `action` - either `copy` or `delete`
 - `group` - (required for `copy`) the system group to assign ownership to, e.g. `root`
 - `user` - (required for `copy`) the system user to assign ownership to, e.g. `root`
-- `mode` - (required for `copy`) the mode to assign to the file, in octal form, e.g. `0o644`
+- `mode` - (required for `copy`) the mode to assign to the file, in octal form, e.g. `644`
 - `content` - (required for `copy`) the content of the file
 - `restarts` - (optional) a list of `services` to restart after copying or deleting the file
 
@@ -85,13 +85,13 @@ files:
     action: copy
     group: root
     user: root
-    mode: 0o644
+    mode: 644
     content: "<?php\nheader(\"Content-Type: text/plain\");\necho \"Hello, world!\\n\";\n?>"
   - path: /etc/apache2/mods-available/dir.conf
     action: copy
     group: root
     user: root
-    mode: 0o644
+    mode: 644
     content: "<IfModule mod_dir.c>\nDirectoryIndex index.php\n</IfModule>"
     restarts: 
       - apache2

@@ -45,6 +45,7 @@ def _install_package(package):
         return _result("noop")
 
     try:
+
         class LogInstallProgress(apt.progress.base.InstallProgress):
             def fork(self):
                 pid = os.fork()
@@ -78,6 +79,7 @@ def _remove_package(package):
         return _result("noop")
 
     try:
+
         class LogInstallProgress(apt.progress.base.InstallProgress):
             def fork(self):
                 pid = os.fork()
@@ -88,6 +90,7 @@ def _remove_package(package):
                     os.dup2(logfd, 1)
                     os.dup2(logfd, 2)
                 return pid
+
         if not _rehearsal:
             pkg.mark_delete()
             cache.commit(install_progress=LogInstallProgress())
@@ -106,7 +109,7 @@ def _delete_file(path):
     try:
         if not _rehearsal:
             os.remove(path)
-    
+
         return _result("ok")
     except Exception as e:
         return _result("error", str(e))
@@ -122,7 +125,7 @@ def _get_file_props(path):
     stat = os.stat(path)
     user = pwd.getpwuid(stat.st_uid)[0]
     group = grp.getgrgid(stat.st_gid)[0]
-    mode = stat.st_mode
+    mode = oct(stat.st_mode)[-3:] # keep perms, throw away the rest
     return _result("ok", data={"hash": hsh, "user": user, "group": group, "mode": mode})
 
 
@@ -134,24 +137,25 @@ def _set_file_props(path, user, group, mode):
         uid = pwd.getpwnam(user)[2]
         gid = grp.getgrnam(group)[2]
         stat = os.stat(path)
-        if uid == stat.st_uid and gid == stat.st_gid and mode == mode & stat.st_mode:
+        if uid == stat.st_uid and gid == stat.st_gid and _mode_equals(mode, stat.st_mode):
             return _result("noop")
 
         if not _rehearsal:
             if uid != stat.st_uid or gid != stat.st_gid:
                 os.chown(path, uid, gid)
-            if mode != mode & stat.st_mode:
-                os.chmod(path, mode | stat.st_mode)
+            if not _mode_equals(mode, stat.st_mode):
+                os.chmod(path, int(mode, 8))
         return _result("ok")
     except Exception as e:
         return _result("error", error=str(e))
-
 
 def _restart_service(service):
     try:
         if not _rehearsal:
             bus = dbus.SystemBus()
-            systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
+            systemd = bus.get_object(
+                "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+            )
             manager = dbus.Interface(systemd, "org.freedesktop.systemd1.Manager")
             manager.RestartUnit(f"{service}.service", "replace")
         return _result("ok")
@@ -179,9 +183,7 @@ def _run():
 
         if cmd.name == "rehearsal-start":
             _rehearsal = True
-            cmd_resp = commands.RehearsalStartResponse(
-                result="ok",
-                error="")
+            cmd_resp = commands.RehearsalStartResponse(result="ok", error="")
         elif cmd.name == "package-install":
             result = _install_package(cmd.package)
             cmd_resp = commands.PackageInstallResponse(
@@ -243,6 +245,10 @@ def _log_error(e):
     with open("error.txt", "a") as f:
         f.write(str(e))
         f.write(traceback.format_exc())
+
+
+def _mode_equals(str_mode, int_mode):
+    return str_mode[-3:] == oct(int_mode)[-3:]
 
 
 if __name__ == "__main__":
