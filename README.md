@@ -112,7 +112,7 @@ files:
 - Doesn't do anything stupid with passwords
 
 ## Anti-features
-- No tests
+- No [tests](https://github.com/david-poirier/stagehand/blob/main/tests/nope.txt)
 - Not much error handling
 - Assumes `root`
 - Doesn't do anything smart with passwords - you have to enter passwords for each target, every time
