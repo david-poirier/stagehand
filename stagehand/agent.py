@@ -8,6 +8,7 @@ import sys
 import traceback
 
 
+_rehearsal = False
 _apt_updated = False
 
 
@@ -43,9 +44,7 @@ def _install_package(package):
     if pkg.is_installed:
         return _result("noop")
 
-    pkg.mark_install()
     try:
-
         class LogInstallProgress(apt.progress.base.InstallProgress):
             def fork(self):
                 pid = os.fork()
@@ -57,7 +56,10 @@ def _install_package(package):
                     os.dup2(logfd, 2)
                 return pid
 
-        cache.commit(install_progress=LogInstallProgress())
+        if not _rehearsal:
+            pkg.mark_install()
+            cache.commit(install_progress=LogInstallProgress())
+
         return _result("ok")
     except Exception as e:
         return _result("error", str(e))
@@ -75,9 +77,7 @@ def _remove_package(package):
     if pkg.is_installed == False:
         return _result("noop")
 
-    pkg.mark_delete()
     try:
-
         class LogInstallProgress(apt.progress.base.InstallProgress):
             def fork(self):
                 pid = os.fork()
@@ -88,8 +88,10 @@ def _remove_package(package):
                     os.dup2(logfd, 1)
                     os.dup2(logfd, 2)
                 return pid
+        if not _rehearsal:
+            pkg.mark_delete()
+            cache.commit(install_progress=LogInstallProgress())
 
-        cache.commit(install_progress=LogInstallProgress())
         return _result("ok")
     except Exception as e:
         return _result("error", str(e))
@@ -102,7 +104,9 @@ def _delete_file(path):
         return _result("noop")
 
     try:
-        os.remove(path)
+        if not _rehearsal:
+            os.remove(path)
+    
         return _result("ok")
     except Exception as e:
         return _result("error", str(e))
@@ -132,21 +136,24 @@ def _set_file_props(path, user, group, mode):
         stat = os.stat(path)
         if uid == stat.st_uid and gid == stat.st_gid and mode == mode & stat.st_mode:
             return _result("noop")
-        if uid != stat.st_uid or gid != stat.st_gid:
-            os.chown(path, uid, gid)
-        if mode != mode & stat.st_mode:
-            os.chmod(path, mode | stat.st_mode)
+
+        if not _rehearsal:
+            if uid != stat.st_uid or gid != stat.st_gid:
+                os.chown(path, uid, gid)
+            if mode != mode & stat.st_mode:
+                os.chmod(path, mode | stat.st_mode)
         return _result("ok")
     except Exception as e:
         return _result("error", error=str(e))
 
 
 def _restart_service(service):
-    bus = dbus.SystemBus()
-    systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-    manager = dbus.Interface(systemd, "org.freedesktop.systemd1.Manager")
     try:
-        manager.RestartUnit(f"{service}.service", "replace")
+        if not _rehearsal:
+            bus = dbus.SystemBus()
+            systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
+            manager = dbus.Interface(systemd, "org.freedesktop.systemd1.Manager")
+            manager.RestartUnit(f"{service}.service", "replace")
         return _result("ok")
     except Exception as e:
         return _result("error", error=str(e))
@@ -157,6 +164,8 @@ def _result(result, error="", data={}):
 
 
 def _run():
+    global _rehearsal
+
     sys.stdout.write("OK")
     sys.stdout.flush()
 
@@ -168,7 +177,12 @@ def _run():
         d = json.loads(msg)
         cmd = commands.fromdict(d)
 
-        if cmd.name == "package-install":
+        if cmd.name == "rehearsal-start":
+            _rehearsal = True
+            cmd_resp = commands.RehearsalStartResponse(
+                result="ok",
+                error="")
+        elif cmd.name == "package-install":
             result = _install_package(cmd.package)
             cmd_resp = commands.PackageInstallResponse(
                 package=cmd.package,

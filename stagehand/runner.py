@@ -69,6 +69,10 @@ class Executor:
         self.session = self._start_session()
         start = time.perf_counter()
 
+        # 0. rehearsal start
+        if self.rehearsal:
+            self._execute_rehearsal_start()
+
         # 1. package installs
         for pkg in self.scenario.packages:
             if pkg.action == "install":
@@ -113,6 +117,12 @@ class Executor:
             except session.SessionAuthError:
                 print("incorrect password!")
 
+    def _execute_rehearsal_start(self):
+        print(f"starting REHEARSAL (nothing will be changed)... ", end="", flush=True)
+        cmd = commands.RehearsalStart()
+        cmd_resp = self.session.execute_command(cmd)
+        self._process_cmd_resp(cmd_resp)
+
     def _execute_package_install(self, pkg):
         print(f"installing package '{pkg.name}'... ", end="", flush=True)
         cmd = commands.PackageInstall(package=pkg.name)
@@ -149,15 +159,16 @@ class Executor:
         # check if same file
         if f.hash != cmd_resp.hash:
             # no, copy to remote
-            self.session.put_data(f.content.encode(), f.path)
+            if not self.rehearsal:
+                self.session.put_data(f.content.encode(), f.path)
 
-            # check again
-            cmd_resp = self.session.execute_command(cmd)
-            if f.hash != cmd_resp.hash:
-                # failed
-                print("error: couldn't copy file")
-                self.errors += 1
-                return
+                # check again
+                cmd_resp = self.session.execute_command(cmd)
+                if f.hash != cmd_resp.hash:
+                    # failed
+                    print("error: couldn't copy file")
+                    self.errors += 1
+                    return
 
         # check user + group + mode
         if (
@@ -166,24 +177,25 @@ class Executor:
             or f.mode != f.mode & cmd_resp.mode
         ):
             # doesn't match, modify
-            cmd = commands.FileSetProps(
-                path=f.path,
-                user=f.user,
-                group=f.group,
-                mode=f.mode,
-            )
+            if not self.rehearsal:
+                cmd = commands.FileSetProps(
+                    path=f.path,
+                    user=f.user,
+                    group=f.group,
+                    mode=f.mode,
+                )
 
-            # check again
-            cmd_resp = self.session.execute_command(cmd)
-            if (
-                f.user != cmd_resp.user
-                or f.group != cmd_resp.group
-                or f.mode != f.mode & cmd_resp.mode
-            ):
-                # failed
-                print("error: couldn't modify file props")
-                self.errors += 1
-                return
+                # check again
+                cmd_resp = self.session.execute_command(cmd)
+                if (
+                    f.user != cmd_resp.user
+                    or f.group != cmd_resp.group
+                    or f.mode != f.mode & cmd_resp.mode
+                ):
+                    # failed
+                    print("error: couldn't modify file props")
+                    self.errors += 1
+                    return
 
         print("done")
         return self._add_restarts(f.restarts)
@@ -192,9 +204,9 @@ class Executor:
         print(f"restarting service '{service}'... ", end="", flush=True)
         cmd = commands.ServiceRestart(service=service)
         cmd_resp = self.session.execute_command(cmd)
-        self._process_cmd_resp(cmd_resp, [])
+        self._process_cmd_resp(cmd_resp)
 
-    def _process_cmd_resp(self, cmd_resp, restarts):
+    def _process_cmd_resp(self, cmd_resp, restarts=[]):
         if cmd_resp.result == "ok":
             print("done")
             self._add_restarts(restarts)
