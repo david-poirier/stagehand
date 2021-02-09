@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eux
+set -ux
 python3 -m venv venv
 . venv/bin/activate
 pip install --upgrade pip
