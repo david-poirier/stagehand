@@ -115,10 +115,10 @@ files:
 - No tests
 - Not much error handling
 - Assumes `root`
-- Makes you enter passwords for each target, every time
+- Doesn't do anything smart with passwords - you have to enter passwords for each target, every time
 - No execution history
 - Probably only works on Ubuntu 18.04 targets (and maybe newer Ubuntus and Debians?)
 - Uses [kind of bizarre method](https://github.com/david-poirier/stagehand/blob/main/stagehand/session.py#L72) to bootstrap itself into target
 - `agent.py` code is weird because it's part of the `scenario` module and it's a script
-- Client-server protocol tightly coupled with SSH stdin/out transport, makes debugging challenging
+- Client-server protocol tightly coupled with SSH stdin/out transport, makes debugging on target challenging
 
